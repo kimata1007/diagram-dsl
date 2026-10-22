@@ -1,3 +1,5 @@
 node_modules/
 dist/
+extension/diagram-dsl-chrome.zip
+extension/diagram-dsl-firefox.zip
 .DS_Store

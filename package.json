@@ -1,6 +1,6 @@
 {
   "name": "diagram-dsl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "A small, predictable language for writing diagrams and compiling them to Mermaid.",
   "type": "module",
@@ -13,9 +13,18 @@
     }
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json"
+    "build": "tsc --project tsconfig.json",
+    "test": "npm run build:extension && node --test",
+    "build:extension": "npm run build && node scripts/build-extension.mjs",
+    "package:extension": "npm run build:extension && node scripts/package-extension.mjs chrome",
+    "package:extension:firefox": "npm run build:extension && node scripts/package-extension.mjs firefox"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "mermaid": "^12.2.0"
   }
 }

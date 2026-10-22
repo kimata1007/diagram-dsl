@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Diagram DSL — local previews",
+  "version": "0.2.0",
+  "description": "Render opted-in diagram-dsl code blocks locally on GitHub and Notion.",
+  "action": {
+    "default_title": "Diagram DSL",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "scripts": ["service-worker.js"]
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": [
+    "https://github.com/*",
+    "https://www.notion.so/*",
+    "https://notion.so/*",
+    "https://*.notion.site/*",
+    "https://notion.site/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_min_version": "128.0"
+    }
+  }
+}

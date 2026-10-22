@@ -1,4 +1,17 @@
-export type DiagramKind = "flowchart" | "erDiagram";
+export type DiagramKind =
+  | "flowchart"
+  | "erDiagram"
+  | "sequenceDiagram"
+  | "stateDiagram-v2"
+  | "classDiagram"
+  | "mindmap"
+  | "pie"
+  | "gantt"
+  | "timeline"
+  | "journey"
+  | "quadrantChart";
+
+import { compileDeclaredDiagram } from "./extended.js";
 
 export interface Diagnostic {
   line: number;
@@ -10,7 +23,7 @@ export type CompileResult =
   | { ok: true; kind: DiagramKind; mermaid: string }
   | { ok: false; diagnostics: Diagnostic[] };
 
-type SourceLine = {
+export type SourceLine = {
   line: number;
   indent: number;
   text: string;
@@ -41,6 +54,7 @@ type FlowNode = {
 type FlowEdge = {
   from: string;
   to: string;
+  arrow: "solid" | "dotted" | "thick" | "both";
   label?: string;
   line: number;
 };
@@ -66,6 +80,8 @@ type EntityField = {
   name: string;
   valueType: string;
   primaryKey: boolean;
+  unique: boolean;
+  reference?: { entity: string; field?: string };
   line: number;
 };
 
@@ -89,7 +105,7 @@ type ErModel = {
   relationships: EntityRelationship[];
 };
 
-const NAME_PATTERN = String.raw`(?:"(?:[^"\\]|\\.)+"|[A-Za-z_][A-Za-z0-9_-]*)`;
+const NAME_PATTERN = String.raw`(?:"(?:[^"\\\u0000-\u001F]|\\["\\])+"|[A-Za-z_][A-Za-z0-9_-]*)`;
 
 const COLOR_STYLES: Record<Color, { fill: string; text: string }> = {
   yellow: { fill: "#FDE047", text: "#111827" },
@@ -107,7 +123,7 @@ const COLOR_STYLES: Record<Color, { fill: string; text: string }> = {
 const ER_RELATION_RE = new RegExp(
   `^(${NAME_PATTERN})\\s+has\\s+(one|many|zero or one)\\s+(${NAME_PATTERN})$`,
 );
-const ER_FIELD_RE = /^([A-Za-z_][A-Za-z0-9_-]*):\s*([A-Za-z_][A-Za-z0-9_]*(?:\[\])?)(?:\s+(key))?$/;
+const ER_FIELD_RE = /^([A-Za-z_][A-Za-z0-9_-]*):\s*([A-Za-z_][A-Za-z0-9_]*(?:\[\])?\??)(?:\s+(key|unique))?(?:\s+references\s+([A-Za-z_][A-Za-z0-9_-]*)(?:\.([A-Za-z_][A-Za-z0-9_-]*))?)?$/;
 
 /** Compile the v0.1 DSL into portable Mermaid source. */
 export function compile(source: string): CompileResult {
@@ -116,6 +132,20 @@ export function compile(source: string): CompileResult {
   if (diagnostics.length > 0) return { ok: false, diagnostics };
   if (lines.length === 0) {
     return { ok: false, diagnostics: [{ line: 1, column: 1, message: "Add at least one diagram statement." }] };
+  }
+
+  const declared = lines[0].text.match(/^(sequence|state|class|mindmap|pie|gantt|timeline|journey|quadrant):$/);
+  if (lines[0].indent === 0 && declared) {
+    const body = lines.slice(1);
+    for (const line of body) {
+      if (line.indent < 2) {
+        diagnostics.push({ line: line.line, column: 1, message: `Statements under \`${declared[1]}:\` must be indented by two spaces.` });
+      }
+    }
+    if (diagnostics.length > 0) return { ok: false, diagnostics };
+    const normalized = body.map((line) => ({ ...line, indent: line.indent - 2 }));
+    const result = compileDeclaredDiagram(declared[1], normalized);
+    return result.ok ? result : { ok: false, diagnostics: result.diagnostics };
   }
 
   const isEr = lines.some((line, index) => {
@@ -139,6 +169,11 @@ function readLines(source: string, diagnostics: Diagnostic[]): SourceLine[] {
   for (const [index, raw] of source.replace(/\r\n?/g, "\n").split("\n").entries()) {
     if (/\t/.test(raw)) {
       diagnostics.push({ line: index + 1, column: raw.indexOf("\t") + 1, message: "Use spaces for indentation; tabs are not allowed." });
+      continue;
+    }
+    const controlIndex = raw.search(/[\x00-\x08\x0B-\x1F\x7F]/);
+    if (controlIndex >= 0) {
+      diagnostics.push({ line: index + 1, column: controlIndex + 1, message: "Control characters are not allowed." });
       continue;
     }
 
@@ -188,22 +223,23 @@ function parseFlow(lines: SourceLine[], diagnostics: Diagnostic[]): FlowModel | 
       continue;
     }
 
-    const edgeMatch = line.text.match(new RegExp(`^(${NAME_PATTERN})\\s*->\\s*(${NAME_PATTERN})(?:\\s*:\\s*(.+))?$`));
+    const edgeMatch = line.text.match(new RegExp(`^(${NAME_PATTERN})\\s*(->|\.\.>|==>|<->)\\s*(${NAME_PATTERN})(?:\\s*:\\s*(.+))?$`));
     if (edgeMatch) {
       if (depth !== 0) {
         diagnostics.push({ line: line.line, column: 1, message: "Write connections at the top level, outside `contains:` groups." });
         continue;
       }
       const from = parseName(edgeMatch[1]);
-      const to = parseName(edgeMatch[2]);
-      const label = edgeMatch[3]?.trim();
-      if (edgeMatch[3] !== undefined && !label) {
+      const arrow = edgeMatch[2] === "->" ? "solid" : edgeMatch[2] === "..>" ? "dotted" : edgeMatch[2] === "==>" ? "thick" : "both";
+      const to = parseName(edgeMatch[3]);
+      const label = edgeMatch[4]?.trim();
+      if (edgeMatch[4] !== undefined && !label) {
         diagnostics.push({ line: line.line, column: line.text.indexOf(":") + 2, message: "An edge label cannot be empty." });
         continue;
       }
       ensureFlowNode(model, from, line.line, parentChildren);
       ensureFlowNode(model, to, line.line, parentChildren);
-      model.edges.push({ from, to, label, line: line.line });
+      model.edges.push({ from, to, arrow, label, line: line.line });
       continue;
     }
 
@@ -322,7 +358,8 @@ function emitFlow(model: FlowModel): string {
     const to = model.nodes.get(identity(edge.to))?.mermaidId;
     if (!from || !to) continue;
     const label = edge.label ? `|${escapeMermaidText(edge.label)}|` : "";
-    output.push(`  ${from} -->${label} ${to}`);
+    const arrow = edge.arrow === "dotted" ? "-.->" : edge.arrow === "thick" ? "==>" : edge.arrow === "both" ? "<-->" : "-->";
+    output.push(`  ${from} ${arrow}${label} ${to}`);
   }
   return output.join("\n");
 }
@@ -387,6 +424,8 @@ function parseEr(lines: SourceLine[], diagnostics: Diagnostic[]): ErModel | unde
         name: fieldMatch[1],
         valueType: fieldMatch[2],
         primaryKey: fieldMatch[3] === "key",
+        unique: fieldMatch[3] === "unique",
+        reference: fieldMatch[4] ? { entity: fieldMatch[4], field: fieldMatch[5] } : undefined,
         line: line.line,
       });
       continue;
@@ -403,9 +442,17 @@ function parseEr(lines: SourceLine[], diagnostics: Diagnostic[]): ErModel | unde
     if (entity.fields.length === 0) {
       diagnostics.push({ line: entity.line, column: 1, message: `Entity "${entity.name}" must declare at least one field.` });
     }
-    const primaryKeys = entity.fields.filter((field) => field.primaryKey);
-    if (primaryKeys.length > 1) {
-      diagnostics.push({ line: primaryKeys[1].line, column: 1, message: `Entity "${entity.name}" has more than one primary key; composite keys are not supported in v0.1.` });
+  }
+
+  for (const entity of model.entities.values()) {
+    for (const field of entity.fields) {
+      if (!field.reference) continue;
+      const target = model.entities.get(identity(field.reference.entity));
+      if (!target) {
+        diagnostics.push({ line: field.line, column: 1, message: `Unknown entity "${field.reference.entity}" referenced by "${entity.name}.${field.name}".` });
+      } else if (field.reference.field && !target.fields.some((candidate) => candidate.name.toLowerCase() === field.reference!.field!.toLowerCase())) {
+        diagnostics.push({ line: field.line, column: 1, message: `Unknown field "${field.reference.entity}.${field.reference.field}" referenced by "${entity.name}.${field.name}".` });
+      }
     }
   }
 
@@ -430,7 +477,8 @@ function emitEr(model: ErModel): string {
     const entityName = mermaidEntityName(entity.name);
     output.push(`  ${entityName} {`);
     for (const field of entity.fields) {
-      output.push(`    ${field.valueType} ${field.name}${field.primaryKey ? " PK" : ""}`);
+      const constraints = [field.primaryKey && "PK", field.reference && "FK", field.unique && "UK"].filter(Boolean).join(", ");
+      output.push(`    ${field.valueType} ${field.name}${constraints ? ` ${constraints}` : ""}`);
     }
     output.push("  }");
   }
@@ -440,7 +488,8 @@ function emitEr(model: ErModel): string {
     const toEntity = model.entities.get(identity(relationship.to));
     if (!fromEntity || !toEntity) continue;
     const right = relationship.cardinality === "one" ? "||" : relationship.cardinality === "many" ? "o{" : "o|";
-    output.push(`  ${mermaidEntityName(fromEntity.name)} ||--${right} ${mermaidEntityName(toEntity.name)} : ${relationship.cardinality === "zero or one" ? "has zero or one" : `has ${relationship.cardinality}`}`);
+    const label = relationship.cardinality === "zero or one" ? "has zero or one" : `has ${relationship.cardinality}`;
+    output.push(`  ${mermaidEntityName(fromEntity.name)} ||--${right} ${mermaidEntityName(toEntity.name)} : "${escapeMermaidText(label)}"`);
   }
   return output.join("\n");
 }
@@ -452,11 +501,7 @@ function mermaidEntityName(name: string): string {
 
 function parseName(value: string): string {
   if (!value.startsWith("\"")) return value;
-  try {
-    return JSON.parse(value) as string;
-  } catch {
-    return value.slice(1, -1).replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
-  }
+  return JSON.parse(value) as string;
 }
 
 function identity(value: string): string {
@@ -486,5 +531,6 @@ function escapeMermaidText(value: string): string {
     .replace(/\|/g, "#124;")
     .replace(/\[/g, "#91;")
     .replace(/\]/g, "#93;")
+    .replace(/%/g, "#37;")
     .replace(/[\r\n]/g, " ");
 }
