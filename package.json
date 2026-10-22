@@ -1,0 +1,21 @@
+{
+  "name": "diagram-dsl",
+  "version": "0.1.0",
+  "private": false,
+  "description": "A small, predictable language for writing diagrams and compiling them to Mermaid.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
