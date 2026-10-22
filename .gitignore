@@ -1,5 +1,6 @@
 node_modules/
 dist/
+extension/dist-firefox/
 extension/diagram-dsl-chrome.zip
 extension/diagram-dsl-firefox.zip
 .DS_Store
