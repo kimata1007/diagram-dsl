@@ -79,10 +79,12 @@ The extension targets current Chrome and Firefox and supported GitHub/Notion pag
 
 ## Real-platform demo
 
-The release demo must be a captured GitHub or Notion session showing the extension turn an opted-in block into a diagram. It will be added here after that end-to-end browser capture has been verified; a terminal animation or mockup is not considered a completed demo.
+This capture shows the browser extension rendering the DSL in GitHub's issue preview. The issue was left as a draft and was not submitted.
+
+![GitHub issue preview rendering a diagram-dsl block locally](demo/github-issue.gif)
 
 For the release smoke test, load the unpacked extension, enable it for GitHub or Notion from its toolbar popup, then open a page containing an opted-in block. Confirm **図を表示** renders the diagram, the Mermaid source can be expanded, malformed DSL shows a diagnostic, and the original code block remains unchanged. On Notion, create a code block whose first line is `# diagram-dsl`.
 
 ## Project status
 
-The v0.2.0 DSL/compiler, local GitHub/Notion extension, tests, and Chrome/Firefox packaging are implemented. The only release item still pending is a verified GIF captured from the real GitHub or Notion browser workflow; this status will be updated when that recording is added.
+The v0.2.0 DSL/compiler, local GitHub/Notion extension, tests, Chrome/Firefox packaging, and verified GitHub browser demo are implemented. The GIF above was captured from the real extension workflow; no GitHub issue was submitted.
