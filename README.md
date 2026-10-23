@@ -79,7 +79,7 @@ The extension targets current Chrome and Firefox and supported GitHub/Notion pag
 
 ## Real-platform demo
 
-This capture shows the browser extension rendering the DSL in GitHub's issue preview. The issue was left as a draft and was not submitted.
+This capture shows the browser extension rendering the DSL in GitHub's issue-creation preview. The issue was left as a draft and was not submitted.
 
 ![GitHub issue preview rendering a diagram-dsl block locally](demo/github-issue.gif)
 
